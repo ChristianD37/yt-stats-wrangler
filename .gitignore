@@ -1,0 +1,22 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+
+# PyCharm / VSCode project files (optional)
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+dist/
+
+
+yt_venv/
