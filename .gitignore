@@ -21,5 +21,8 @@ __pycache__/
 build/
 dist/
 
-
+# Virtual environment
 yt_venv/
+
+# egg info directory
+yt_stats_wrangler.egg-info/

@@ -5,7 +5,7 @@ more about best practice when contributing to the package. Cheers!
 
 ---
 
-## 🧰 Development Setup
+## Development Setup
 
 To run and test the code locally:
 
@@ -43,7 +43,7 @@ You'll need to generate a Youtube API V3 Key to use and test the package. Please
 pytest tests/ -v
 ```
 
-## Testing the packackage
+## Testing the package
 
 All tests live in the tests/ directory.
 We use `pytest` for unit testing. Make sure tests pass before submitting PRs.
