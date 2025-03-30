@@ -4,6 +4,7 @@ from yt_stats_wrangler.api.client import YouTubeDataClient
 
 # Use the CDCodes channel ID to test the client and ensure it's interfacing with the API
 
+# CDCodes channel will be used for testing API access
 TEST_CHANNEL_ID = 'UCB2mKxxXPK3X8SJkAc-db3A'
 
 
