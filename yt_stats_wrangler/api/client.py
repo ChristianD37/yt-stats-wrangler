@@ -3,10 +3,9 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import isodate
 import datetime
-import pandas as pd
 
 # Import helper functions within the package
-from yt_stats_wrangler.utils.helpers import current_commit_time, format_dict_keys
+from yt_stats_wrangler.utils.helpers import current_commit_time, format_dict_keys, convert_to_library
 
 class YouTubeDataClient:
     def __init__(self, api_key: str, max_quota : int = -1):
@@ -41,7 +40,7 @@ class YouTubeDataClient:
         self.quota_used += 1
         return response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
 
-    def get_all_video_details_for_channel(self, channel_id: str, key_format : str = 'raw') -> list:
+    def get_all_video_details_for_channel(self, channel_id: str, key_format : str = 'raw', output_format: str = "raw") -> list:
         """Function that takes in a channel ID, identifies the channels
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
@@ -70,7 +69,6 @@ class YouTubeDataClient:
                     "title": snippet["title"],
                     "description": snippet["description"],
                     "channelTitle": snippet["channelTitle"],
-                    "commitTime_videoDetails": str(datetime.datetime.now())
                     
                 }
                 video.update(current_commit_time('videoDetails'))
@@ -84,9 +82,9 @@ class YouTubeDataClient:
         if key_format != "raw":
             video_details = format_dict_keys(video_details, case=key_format)
 
-        return video_details
+        return convert_to_library(video_details, output_format)
     
-    def get_all_video_details_for_channels(self, channel_ids: list, key_format: str = "raw") -> list:
+    def get_all_video_details_for_channels(self, channel_ids: list, key_format: str = "raw", output_format: str = "raw") -> list:
         """Function that takes in a list of channel IDs, identifies the channels'
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
@@ -106,10 +104,10 @@ class YouTubeDataClient:
                 print(f"Error fetching videos for channel {channel_id}: {e}")
                 self.failed_channel_ids.append(channel_id)
 
-        return all_videos
+        return convert_to_library(all_videos, output_format)
 
 
-    def get_video_stats(self, video_ids: list, key_format : str = 'raw') -> list:
+    def get_video_stats(self, video_ids: list, key_format : str = 'raw', output_format: str = "raw") -> list:
         """Input a list of video IDs, and get a descriptiveb statistics and metrics on the performance of the video.
         Returns views, engagement, metrics, duration, shorts classification and other metadata on the video."""
         all_video_data = []
@@ -143,7 +141,6 @@ class YouTubeDataClient:
                     "duration_seconds": seconds,
                     "definition": item["contentDetails"].get("definition"),
                     "isShort": seconds <= 60,
-                    "commitTime_videoStats": str(datetime.datetime.now())
                 }
                 video_stats.update(current_commit_time('videoStats'))
                 all_video_data.append(video_stats)
@@ -151,9 +148,9 @@ class YouTubeDataClient:
         if key_format != "raw":
             all_video_data = format_dict_keys(all_video_data, case=key_format)
 
-        return all_video_data 
+        return convert_to_library(all_video_data, output_format)
     
-    def get_top_level_video_comments(self, video_id: str, key_format : str = 'raw') -> list:
+    def get_top_level_video_comments(self, video_id: str, key_format : str = 'raw', output_format: str = "raw") -> list:
         """Retrieve all top-level comments for a given video ID. Will not return nested comments."""
         comments = []
         request = self.youtube.commentThreads().list(
@@ -190,9 +187,9 @@ class YouTubeDataClient:
         if key_format != "raw":
             comments = format_dict_keys(comments, case=key_format)
 
-        return comments
+        return convert_to_library(comments, output_format)
     
-    def get_top_level_comments_for_video_ids(self, video_ids: list, key_format : str = 'raw') -> list:
+    def get_top_level_comments_for_video_ids(self, video_ids: list, key_format : str = 'raw', output_format: str = "raw") -> list:
         all_comments = []
         self.failed_ids_for_comments = []
 
@@ -218,7 +215,7 @@ class YouTubeDataClient:
         if key_format != "raw":
             all_comments = format_dict_keys(all_comments, case=key_format)
 
-        return all_comments # or return all_comments, failed_ids
+        return convert_to_library(all_comments, output_format) # or return all_comments, failed_ids
     
     def get_quota_used(self):
         # get the current max quota
