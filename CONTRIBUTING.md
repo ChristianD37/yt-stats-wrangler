@@ -35,7 +35,7 @@ pip install -r requirements-dev.txt
 
 5. **Set environment variables**
 
-You'll need to generate a Youtube API V3 Key to use and test the package. Please refer to the [official API documentation] (https://developers.google.com/youtube/v3/getting-started) on getting an access key for YouTube API v3
+You'll need to generate a Youtube API V3 Key to use and test the package. Please refer to the [official API documentation](https://developers.google.com/youtube/v3/getting-started) on getting an access key for YouTube API v3
 
 6. **Run the test suite and ensure all tests pass**
 
