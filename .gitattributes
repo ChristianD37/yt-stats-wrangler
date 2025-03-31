@@ -1,0 +1,3 @@
+# Force LF line endings in Git repo
+*.py text eol=lf
+*.ipynb text eol=lf

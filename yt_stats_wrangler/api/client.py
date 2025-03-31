@@ -84,7 +84,8 @@ class YouTubeDataClient:
 
         return convert_to_library(video_details, output_format)
     
-    def get_all_video_details_for_channels(self, channel_ids: list, key_format: str = "raw", output_format: str = "raw") -> list:
+    def get_all_video_details_for_channels(self, channel_ids: list, key_format: str = "raw", 
+                                           output_format: str = "raw", print_current_channel = True) -> list:
         """Function that takes in a list of channel IDs, identifies the channels'
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
@@ -96,7 +97,7 @@ class YouTubeDataClient:
                 print("Quota limit reached. Stopping collection.")
                 break
 
-            print(f"Fetching videos for channel: {channel_id}")
+            if print_current_channel: print(f"Fetching videos for channel: {channel_id}")
             try:
                 videos = self.get_all_video_details_for_channel(channel_id, key_format=key_format)
                 all_videos.extend(videos)
@@ -189,7 +190,8 @@ class YouTubeDataClient:
 
         return convert_to_library(comments, output_format)
     
-    def get_top_level_comments_for_video_ids(self, video_ids: list, key_format : str = 'raw', output_format: str = "raw") -> list:
+    def get_top_level_comments_for_video_ids(self, video_ids: list, key_format : str = 'raw',
+                                              output_format: str = "raw", print_current_channel = True) -> list:
         all_comments = []
         self.failed_ids_for_comments = []
 
@@ -198,7 +200,7 @@ class YouTubeDataClient:
                 print("Quota limit reached. Stopping comment collection.")
                 break
 
-            print(f"Fetching comments for video ID: {video_id}")
+            if print_current_channel: print(f"Fetching comments for video ID: {video_id}")
             try:
                 comments = self.get_top_level_video_comments(video_id)
                 all_comments.extend(comments)
