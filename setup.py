@@ -15,7 +15,9 @@ setup(
         "isodate"
     ],
     extras_require={
-        "pandas": ["pandas"]
+        "pandas": ["pandas"],
+        "polars": ["polars"],
+        "pyspark": ["pyspark"],
     },
     classifiers=[
         "Programming Language :: Python :: 3",
