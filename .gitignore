@@ -3,12 +3,18 @@ __pycache__/
 *.py[cod]
 *.so
 *.egg-info/
+*.pyo
+*.pyd
 
 # Pytests files
 .pytest_cache/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+# PyInstaller
+*.spec
+
 
 # OS files
 .DS_Store
@@ -20,9 +26,30 @@ __pycache__/
 # Build artifacts
 build/
 dist/
+*.egg-info/
+*.egg
+*.whl
 
-# Virtual environment
+# Virtual environments
 yt_venv/
+.env
+.venv
+env/
+venv/
+*.env
 
 # egg info directory
 yt_stats_wrangler.egg-info/
+
+# MyPy and other tooling
+.mypy_cache/
+.dmypy.json
+.pyre/
+.coverage
+.cache/
+.nox/
+
+# Local config
+*.log
+*.local
+*.sqlite
