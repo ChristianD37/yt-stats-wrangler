@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yt-stats-wrangler"
+version = "0.1.0"
+description = "A Python package to collect and wrangle YouTube video and channel statistics using the YouTube Data API v3"
+readme = "README.md"
+requires-python = ">=3.7"
+authors = [
+  { name="Christian Duenas", email="christianduenas1998@gmail.com" }
+]
+license = { text = "MIT" }
+keywords = ["youtube", "api", "youtube-data-api", "statistics", "analytics", "youtube-v3"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "google-api-python-client",
+    "isodate"
+]
+
+[project.optional-dependencies]
+pandas = ["pandas"]
+polars = ["polars"]
+pyspark = ["pyspark"]
+
+[project.urls]
+Homepage = "https://github.com/ChristianD37/yt-stats-wrangler"
