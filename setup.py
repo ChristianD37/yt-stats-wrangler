@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="yt-stats-wrangler",
-    version="0.1.0",
+    name="yt_stats_wrangler",
+    version="0.1.1",
     author="Christian Duenas",
     author_email="christianduenas1998@gmail.com",
     description="A Python package to collect and wrangle YouTube video and channel statistics using the YouTube Data API v3",
