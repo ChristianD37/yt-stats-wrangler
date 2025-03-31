@@ -4,7 +4,7 @@ A flexible and easy-to-use Python package to collect and wrangle YouTube video a
 
 Built with extensibility and usability in mind, `yt-stats-wrangler` supports a range of outputs (raw JSON, pandas, polars) and offers features for analyzing video metadata, statistics, and comments.
 
-You'll need a developer key for the YouTube API V3 to use this package. To generate an API key for your google developer account, please see the [official YouTube API v3 documentation](https://developers.google.com/youtube/v3/getting-started) for more information
+You'll need a developer key for the YouTube API V3 to use this package. To generate an API key for your google developer account, please see the [official YouTube API v3 documentation](https://developers.google.com/youtube/v3/getting-started) for more information.
 
 ---
 
@@ -28,7 +28,7 @@ More coming soon!
 pip install yt-stats-wrangler
 ```
 
-`yt-stats-wrangler` is designed to work independent of any data libraries in python for users who prefer a lightweight solution. `pandas`, `polars` and `pyspark` are treated as oiptional dependencies. To use this package with those libraries, ensure they are installed in your enviornment or specify their installation like below:
+`yt-stats-wrangler` is designed to work independent of any data libraries in python for users who prefer a lightweight solution. `pandas`, `polars` and `pyspark` are treated as optional dependencies. To use this package with those libraries, ensure they are installed in your enviornment or specify their installation like below:
 
 To use with pandas:
 ```bash
@@ -64,9 +64,13 @@ videos = client.get_all_video_details_for_channel(
 print(videos.head())
 ```
 
+Checkout [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler/tree/main/example_notebooks) for more ways to use the package
+
 ---
 
 ## Supported Methods
+
+### YouTubeDataClient
 
 | Method | Description |
 |--------|-------------|
@@ -105,18 +109,19 @@ Please see the (contribution documentation)[https://github.com/ChristianD37/yt-s
 ## License
 
 This project has an MIT license. You're welcome to build on this package, integrate it into your own data pipelines, or extend it for custom use cases (e.g., adding other output formats or integrating it into production systems). Just make sure to preserve the license file and give credit in your derived works.  It is open source, open to new contributors and can be used for any purpose (personal, academic, commercial, etc.)
----
+
 
 ## Author
 
 Created and maintained by **Christian Dueñas**  
 GitHub: [@ChristianD37](https://github.com/ChristianD37)
 
-
+Additonal Contributors:
+Coming Soon!
 
 ---
 
 ## Example Notebooks
 
-Check out examples of the package at work in the  [`example_notebooks directory`](https://github.com/ChristianD37/yt-stats-wrangler/tree/main/example_notebooks).
+Check out examples of the package at work in the  [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler/tree/main/example_notebooks) directory.
 
