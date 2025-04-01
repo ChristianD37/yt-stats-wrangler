@@ -1,4 +1,6 @@
-def to_spark_df(data: list[dict]):
+from typing import List, Dict, Optional, Union
+
+def to_spark_df(data: List[Dict]):
     """
     Converts a list of dictionaries into a PySpark DataFrame.
     Requires `pyspark` to be installed.

@@ -72,13 +72,19 @@ Checkout [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler
 
 ### YouTubeDataClient
 
-| Method | Description |
-|--------|-------------|
-| `get_all_video_details_for_channel(channel_id)` | Fetch video metadata for a single channel |
-| `get_all_video_details_for_channels(channel_ids)` | Fetch video metadata for multiple channels |
-| `get_video_stats(video_ids)` | Get public statistics for one or more videos |
-| `get_top_level_video_comments(video_id)` | Get top-level comments for a video |
-| `get_top_level_comments_for_video_ids(video_ids)` | Get top-level comments for multiple videos |
+| Method | Description | Estimated Quota Cost |
+|--------|-------------|----------------------|
+| `get_channel_id_from_handle(handle)` | Get a channel's ID from a YouTube handle (e.g. '@cdcodes') | **100** |
+| `get_channel_ids_from_handles(handles)` | Get multiple channel IDs from a list of YouTube handles | **100 per handle** |
+| `get_channel_statistics(channel_id)` | Get high-level stats for a single channel (subscribers, total views, total posts) | 1 |
+| `get_channel_statistics_for_channels(channel_ids)` | Get high-level stats for multiple channels | 1 per channel |
+| `get_all_video_details_for_channel(channel_id)` | Fetch video metadata for a single channel | 1 per 50 videos |
+| `get_all_video_details_for_channels(channel_ids)` | Fetch video metadata for multiple channels | 1 per 50 videos, per channel |
+| `get_video_stats(video_ids)` | Get public statistics for one or more videos | 1 per 50 video IDs |
+| `get_top_level_video_comments(video_id)` | Get top-level comments for a video | 1 per 100 comments page |
+| `get_top_level_comments_for_video_ids(video_ids)` | Get top-level comments for multiple videos | 1 per 100 comments page, per video |
+
+
 
 ---
 

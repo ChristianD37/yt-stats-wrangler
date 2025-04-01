@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import List, Dict
 
 
 def current_commit_time(prefix: str) -> str:
@@ -20,14 +21,14 @@ def format_column_friendly_string(name: str, case: str = 'upper') -> str:
     elif case == 'upper': return name.upper()
     else: return  name
 
-def format_dict_keys(data: list[dict], case: str = 'upper') -> list[dict]:
+def format_dict_keys(data: List[Dict], case: str = 'upper') -> List[Dict]:
     '''Applies string formatting from format_column_friendly_string method to each of the keys in the dictionary'''
     return [
         {format_column_friendly_string(k, case): v for k, v in item.items()}
         for item in data
     ]
 
-def convert_to_library(data: list[dict], output_format: str = "raw"):
+def convert_to_library(data: List[Dict], output_format: str = "raw"):
     """
     Converts a list of dictionaries to a specified data format from a popular python data library.
 

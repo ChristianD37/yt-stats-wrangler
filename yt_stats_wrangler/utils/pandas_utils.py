@@ -1,4 +1,6 @@
-def to_pandas_df(data: list[dict]):
+from typing import List, Dict, Optional, Union
+
+def to_pandas_df(data: List[Dict]):
     """
     Convert a list of dictionaries into a pandas DataFrame.
     Returns an empty DataFrame if the list is empty.

@@ -1,4 +1,6 @@
-def to_polars_df(data: list[dict]):
+from typing import List, Dict, Optional, Union
+
+def to_polars_df(data: List[Dict]):
     """
     Converts a list of dictionaries into a Polars DataFrame.
     Requires `polars` to be installed.

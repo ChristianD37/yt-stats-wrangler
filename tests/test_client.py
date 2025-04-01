@@ -26,6 +26,35 @@ def test_quota_initial_state(yt_client):
     assert yt_client.quota_used == 0
     assert yt_client.max_quota == -1  # default unlimited
 
+def test_get_channel_statistics(yt_client):
+    result = yt_client.get_channel_statistics(TEST_CHANNEL_ID, key_format="upper", output_format="raw")
+    # Check that the result is a list with one dictionary
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], dict)
+    assert "CHANNEL_ID" in result[0]
+    assert result[0]["CHANNEL_ID"] == TEST_CHANNEL_ID
+
+def test_get_channel_statistics_for_channels(yt_client):
+    result = yt_client.get_channel_statistics_for_channels(TEST_CHANNELS, key_format="upper", output_format="raw")
+
+    # Check that the result is a list of dicts
+    assert isinstance(result, list)
+    assert len(result) >= len(TEST_CHANNELS)
+    assert all(isinstance(entry, dict) for entry in result)
+
+    # Check required fields exist
+    for channel in result:
+        assert "CHANNEL_ID" in channel
+        assert "SUBSCRIBERS" in channel
+
+def test_get_channel_statistics_for_channels_pandas(yt_client):
+    df = yt_client.get_channel_statistics_for_channels(TEST_CHANNELS, key_format="lower", output_format="pandas")
+
+    assert hasattr(df, "shape")
+    assert "channel_id" in df.columns
+    assert df.shape[0] == len(TEST_CHANNELS)
+
     # Test that the client finds the uploads playlist
 def test_get_uploads_playlist_id(yt_client):
     playlist_id = yt_client.get_uploads_playlist_id(TEST_CHANNEL_ID)
@@ -238,3 +267,32 @@ def test_get_all_video_details_for_channels_key_format(yt_client):
     # invalid format - Ids should be stored in the failed channel ids list
     yt_client.get_all_video_details_for_channels(test_channels, key_format="camelCase")
     assert test_channels[0] in yt_client.failed_channel_ids
+
+
+def test_get_channel_id_from_handle(yt_client):
+    # Skip if the quota isn't sufficient AND the client is not set to unlimited (-1)
+    if yt_client.max_quota != -1 and yt_client.get_remaining_quota() < 100:
+        pytest.skip("Not enough quota to run handle-based test")
+
+    handle = "@cdcodes"
+    channel_id = yt_client.get_channel_id_from_handle(handle)
+
+    assert isinstance(channel_id, str)
+    assert channel_id.startswith("UC")
+
+
+def test_get_channel_ids_from_handles(yt_client):
+    if yt_client.max_quota != -1 and yt_client.get_remaining_quota() < 200:
+        pytest.skip("Not enough quota to test multiple handles")
+
+    handles = ["@cdcodes", "@homedawg_yt"]
+    channel_ids = yt_client.get_channel_ids_from_handles(handles)
+
+    assert isinstance(channel_ids, list)
+    assert len(channel_ids) == len(handles)
+    for cid in channel_ids:
+        assert isinstance(cid, str)
+        assert cid.startswith("UC")
+
+
+
