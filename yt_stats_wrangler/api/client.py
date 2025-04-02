@@ -26,6 +26,58 @@ class YouTubeDataClient:
             return False
         return True
     
+    def get_channel_id_from_handle(self, handle: str) -> Optional[str]:
+        """
+        Retrieve the channel ID associated with a given YouTube handle (e.g., '@cdcodes').
+
+        Note: This method uses the search endpoint, which consumes **100 quota units** per call.
+        """
+        if not self.check_quota(units=100):
+            print("Quota exhausted. Cannot perform search.")
+            return None
+
+        try:
+            response = self.youtube.search().list(
+                part="snippet",
+                q=handle,
+                type="channel",
+                maxResults=1
+            ).execute()
+
+            self.quota_used += 100
+
+            if response.get("items"):
+                return response["items"][0]["id"]["channelId"]
+
+        except Exception as e:
+            print(f"Error retrieving channel ID for handle {handle}: {e}")
+
+        return None
+    
+    def get_channel_ids_from_handles(self, handles: List[str], print_current_handle = True) -> List[str]:
+        """Takes a list of YouTube handles and returns the corresponding list of channel IDs."""
+        channel_ids = []
+        self.failed_handles = []
+
+        for handle in handles:
+            if not self.check_quota():
+                print("Quota limit reached. Stopping handle conversion.")
+                break
+
+            if print_current_handle: print(f"Resolving handle: {handle}")
+            try:
+                channel_id = self.get_channel_id_from_handle(handle)
+                if channel_id:
+                    channel_ids.append(channel_id)
+                else:
+                    self.failed_handles.append(handle)
+
+            except Exception as e:
+                print(f"Error resolving handle {handle}: {e}")
+                self.failed_handles.append(handle)
+
+        return channel_ids
+    
     def get_channel_statistics(self, channel_id: str, key_format: str = "raw", output_format: str = "raw") -> Union[List[Dict], any]:
         """Fetch high-level statistics for a single channel, such as subscribers, total views, and total posts.
         Input is a YouTube channel ID."""
@@ -266,57 +318,90 @@ class YouTubeDataClient:
 
         return convert_to_library(all_comments, output_format) # or return all_comments, failed_ids
     
-    def get_channel_id_from_handle(self, handle: str) -> Optional[str]:
-        """
-        Retrieve the channel ID associated with a given YouTube handle (e.g., '@cdcodes').
+    def get_replies_to_comment(self, parent_comment_id: str) -> List[Dict]:
+        """Fetch all replies to a top-level comment using its comment ID."""
+        replies = []
 
-        Note: This method uses the search endpoint, which consumes **100 quota units** per call.
-        """
-        if not self.check_quota(units=100):
-            print("Quota exhausted. Cannot perform search.")
-            return None
+        request = self.youtube.comments().list(
+            part="snippet",
+            parentId=parent_comment_id,
+            textFormat="plainText",
+            maxResults=100
+        )
 
-        try:
-            response = self.youtube.search().list(
-                part="snippet",
-                q=handle,
-                type="channel",
-                maxResults=1
-            ).execute()
-
-            self.quota_used += 100
-
-            if response.get("items"):
-                return response["items"][0]["id"]["channelId"]
-
-        except Exception as e:
-            print(f"Error retrieving channel ID for handle {handle}: {e}")
-
-        return None
-    
-    def get_channel_ids_from_handles(self, handles: List[str], print_current_handle = True) -> List[str]:
-        """Takes a list of YouTube handles and returns the corresponding list of channel IDs."""
-        channel_ids = []
-        self.failed_handles = []
-
-        for handle in handles:
+        while request:
             if not self.check_quota():
-                print("Quota limit reached. Stopping handle conversion.")
                 break
 
-            if print_current_handle: print(f"Resolving handle: {handle}")
-            try:
-                channel_id = self.get_channel_id_from_handle(handle)
-                if channel_id:
-                    channel_ids.append(channel_id)
-                else:
-                    self.failed_handles.append(handle)
+            response = request.execute()
+            self.quota_used += 1
 
-            except Exception as e:
-                print(f"Error resolving handle {handle}: {e}")
-                self.failed_handles.append(handle)
+            for item in response.get("items", []):
+                snippet = item["snippet"]
+                reply = {
+                    "commentId": item["id"],
+                    "parentId": parent_comment_id,
+                    "author": snippet.get("authorDisplayName"),
+                    "text": snippet.get("textDisplay"),
+                    "publishedAt": snippet.get("publishedAt"),
+                    "likeCount": snippet.get("likeCount", 0),
+                    "videoId": snippet.get("videoId")
+                }
+                reply.update(current_commit_time("videoNestedComments"))
+                replies.append(reply)
 
-        return channel_ids
+            request = self.youtube.comments().list_next(request, response)
+
+        return replies
+    
+    def get_all_comments(self, video_id: str, key_format: str = 'raw', output_format: str = "raw") -> Union[List[Dict], any]:
+        """Fetch all comments (top-level and nested) for a video."""
+        all_comments = []
+
+        request = self.youtube.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            textFormat="plainText",
+            maxResults=100
+        )
+
+        while request:
+            if not self.check_quota():
+                break
+
+            response = request.execute()
+            self.quota_used += 1
+
+            for item in response.get("items", []):
+                top_snippet = item['snippet']['topLevelComment']['snippet']
+                top_id = item['snippet']['topLevelComment']['id']
+                reply_count = item['snippet'].get('totalReplyCount', 0)
+
+                # Top-level comment
+                comment = {
+                    'commentId': top_id,
+                    'videoId': video_id,
+                    'author': top_snippet.get("authorDisplayName"),
+                    'text': top_snippet.get("textDisplay"),
+                    'publishedAt': top_snippet.get("publishedAt"),
+                    'likeCount': top_snippet.get("likeCount", 0),
+                    'replyCount': reply_count,
+                    'parentId': None
+                }
+                comment.update(current_commit_time("videoAllComments"))
+                all_comments.append(comment)
+
+                # Replies
+                if reply_count > 0:
+                    replies = self.get_replies_to_comment(top_id)
+                    all_comments.extend(replies)
+
+            request = self.youtube.commentThreads().list_next(request, response)
+
+        if key_format != "raw":
+            all_comments = format_dict_keys(all_comments, case=key_format)
+
+        return convert_to_library(all_comments, output_format)
     
     def get_quota_used(self):
         # get the current max quota

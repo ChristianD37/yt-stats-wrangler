@@ -97,9 +97,9 @@ You can return data in one of the following formats:
 
 ---
 
-## Column Formatting
+## Key and Column Formatting
 
-For user-friendly keys, pass the `key_format` argument:
+For user-friendly keys and columns, pass the `key_format` argument:
 - `raw`: Keep keys as-is from the API (default)
 - `lower`: lowercase with underscores to separate words
 - `upper`: UPPERCASE with underscores to separate words
@@ -109,7 +109,7 @@ For user-friendly keys, pass the `key_format` argument:
 
 ## Development & Contributing
 
-Please see the (contribution documentation)[https://github.com/ChristianD37/yt-stats-wrangler/blob/main/CONTRIBUTING.md] for best practice on contributing to the package.
+Please see the [contribution documentation](https://github.com/ChristianD37/yt-stats-wrangler/blob/main/CONTRIBUTING.md) for best practice on contributing to the package.
 
 
 ## License
