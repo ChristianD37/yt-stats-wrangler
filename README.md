@@ -30,7 +30,7 @@ More coming soon!
 pip install yt-stats-wrangler
 ```
 
-`yt-stats-wrangler` is designed to work independent of any data libraries in python for users who prefer a lightweight solution. `pandas`, `polars` and `pyspark` are treated as optional dependencies. To use this package with those libraries, ensure they are installed in your enviornment or specify their installation like below:
+`yt-stats-wrangler` is designed to work independent of any data libraries in python for users who prefer a lightweight solution. `pandas`, `polars` are treated as optional dependencies. To use this package with those libraries, ensure they are installed in your enviornment or specify their installation like below:
 
 To use with pandas:
 ```bash
@@ -97,6 +97,7 @@ You can return data in one of the following formats:
 - `raw`: List of dictionaries (default)
 - `pandas`: Requires optional pandas dependency
 - `polars`: Requires optional polars dependency
+- `pyspark` : Requires optional polars dependency, implementation available but not thoroughly tested as of v0.2.0
 
 ---
 
