@@ -8,6 +8,8 @@ You'll need a developer key for the YouTube API V3 to use this package. To gener
 
 [Github repository for the project can be found here](https://github.com/ChristianD37/yt-stats-wrangler)
 
+[PyPI page for the project can be found here](https://pypi.org/project/yt-stats-wrangler/)
+
 ---
 
 ## Features
@@ -115,6 +117,8 @@ For user-friendly keys and columns, pass the `key_format` argument:
 
 Please see the [contribution documentation](https://github.com/ChristianD37/yt-stats-wrangler/blob/main/CONTRIBUTING.md) for best practice on contributing to the package.
 
+See the full [CHANGELOG.md](./CHANGELOG.md) for a list of updates and changes.
+
 
 ## License
 
@@ -131,7 +135,7 @@ Coming Soon!
 
 ---
 
-## Example Notebooks
+## Tutorial and Example Notebooks
 
 Check out examples of the package at work in the  [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler/tree/main/example_notebooks) directory.
 
