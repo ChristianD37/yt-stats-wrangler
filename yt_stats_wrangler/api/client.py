@@ -319,7 +319,8 @@ class YouTubeDataClient:
         return convert_to_library(all_comments, output_format) # or return all_comments, failed_ids
     
     def get_replies_to_comment(self, parent_comment_id: str) -> List[Dict]:
-        """Fetch all replies to a top-level comment using its comment ID."""
+        """Fetch all replies to a top-level comment using its comment ID. This is a helper function that is used
+        in the get_all_video_comments method to gather comment replies and handle nested comments."""
         replies = []
 
         request = self.youtube.comments().list(
@@ -347,15 +348,17 @@ class YouTubeDataClient:
                     "likeCount": snippet.get("likeCount", 0),
                     "videoId": snippet.get("videoId")
                 }
-                reply.update(current_commit_time("videoNestedComments"))
+                reply.update(current_commit_time("videoAllComments"))
                 replies.append(reply)
 
             request = self.youtube.comments().list_next(request, response)
 
         return replies
     
-    def get_all_comments(self, video_id: str, key_format: str = 'raw', output_format: str = "raw") -> Union[List[Dict], any]:
-        """Fetch all comments (top-level and nested) for a video."""
+    def get_all_video_comments(self, video_id: str, key_format: str = 'raw', 
+                                       output_format: str = "raw") -> Union[List[Dict], any]:
+        """Fetch all comments (top-level and nested) for a video. Takes in a singular Video ID and returns
+        all comments left on that video, including replies to other comments."""
         all_comments = []
 
         request = self.youtube.commentThreads().list(
@@ -391,12 +394,45 @@ class YouTubeDataClient:
                 comment.update(current_commit_time("videoAllComments"))
                 all_comments.append(comment)
 
-                # Replies
+                # For eacxh comment, get any replies if they exist and append the data onto the comment output
                 if reply_count > 0:
                     replies = self.get_replies_to_comment(top_id)
                     all_comments.extend(replies)
 
             request = self.youtube.commentThreads().list_next(request, response)
+        # Format keys according to user specification
+        if key_format != "raw":
+            all_comments = format_dict_keys(all_comments, case=key_format)
+        # Format output according to specified library structure, and return the output
+        return convert_to_library(all_comments, output_format)
+    
+    def get_all_comments_for_video_ids(self, video_ids: List[str], key_format: str = 'raw',
+                                    output_format: str = "raw", print_current_video: bool = True) -> Union[List[Dict], any]:
+        """Fetches all comments (top-level and nested) for multiple videos IDs. Input is a list of video IDs. Output is all comments
+        on the corresponding videos, including replies to other comments."""
+        all_comments = []
+        self.failed_ids_for_all_comments = []
+
+        for video_id in video_ids:
+            if not self.check_quota():
+                print("Quota limit reached. Stopping comment collection.")
+                break
+
+            if print_current_video:
+                print(f"Fetching all comments for video ID: {video_id}")
+
+            try:
+                comments = self.get_all_video_comments(video_id, key_format="raw", output_format="raw")
+                all_comments.extend(comments)
+
+            except HttpError as e:
+                self.quota_used += 1
+                print(f"[HttpError] Video {video_id}: {e}")
+                self.failed_ids_for_all_comments.append(video_id)
+
+            except Exception as e:
+                print(f"[Exception] Video {video_id}: {e}")
+                self.failed_ids_for_all_comments.append(video_id)
 
         if key_format != "raw":
             all_comments = format_dict_keys(all_comments, case=key_format)

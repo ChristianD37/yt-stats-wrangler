@@ -6,6 +6,8 @@ Built with extensibility and usability in mind, `yt-stats-wrangler` supports a r
 
 You'll need a developer key for the YouTube API V3 to use this package. To generate an API key for your google developer account, please see the [official YouTube API v3 documentation](https://developers.google.com/youtube/v3/getting-started) for more information.
 
+[Github repository for the project can be found here](https://github.com/ChristianD37/yt-stats-wrangler)
+
 ---
 
 ## Features
@@ -83,7 +85,8 @@ Checkout [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler
 | `get_video_stats(video_ids)` | Get public statistics for one or more videos | 1 per 50 video IDs |
 | `get_top_level_video_comments(video_id)` | Get top-level comments for a video | 1 per 100 comments page |
 | `get_top_level_comments_for_video_ids(video_ids)` | Get top-level comments for multiple videos | 1 per 100 comments page, per video |
-
+| `get_all_video_comments(video_id)` | Get all comments (top-level + replies) for a video | 1 per 100 top-level comments + 1 per 100 replies |
+| `get_all_comments_for_video_ids(video_ids)` | Get all comments (top-level + replies) for multiple videos | Varies by number of videos and replies |
 
 
 ---

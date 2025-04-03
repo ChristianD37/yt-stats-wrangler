@@ -294,5 +294,71 @@ def test_get_channel_ids_from_handles(yt_client):
         assert isinstance(cid, str)
         assert cid.startswith("UC")
 
+def test_get_replies_to_comment(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(100)
+
+    # First, find a video with comments and replies
+    videos = yt_client.get_all_video_details_for_channel(TEST_CHANNEL_ID)
+    video_id = videos[0]["videoId"]
+    top_comments = yt_client.get_top_level_video_comments(video_id)
+
+    # Find a top-level comment that has replies
+    comment_with_replies = None
+    for comment in top_comments:
+        if comment.get("replyCount", 0) > 0:
+            comment_with_replies = comment
+            break
+
+    if not comment_with_replies:
+        pytest.skip("No comment with replies found")
+
+    comment_id = comment_with_replies["commentId"]
+
+    replies = yt_client.get_replies_to_comment(comment_id)
+
+    assert isinstance(replies, list)
+    if replies:
+        reply = replies[0]
+        assert isinstance(reply, dict)
+        assert "commentId" in reply
+        assert "parentId" in reply
+        assert reply["parentId"] == comment_id
+
+def test_get_all_video_comments(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(100)
+
+    videos = yt_client.get_all_video_details_for_channel(TEST_CHANNEL_ID)
+    video_id = videos[0]["videoId"]  # Take the first video
+
+    comments = yt_client.get_all_video_comments(video_id, key_format="upper", output_format="raw")
+
+    assert isinstance(comments, list)
+    if comments:
+        first_comment = comments[0]
+        assert isinstance(first_comment, dict)
+        assert "COMMENT_ID" in first_comment
+        assert "VIDEO_ID" in first_comment
+        assert "PARENT_ID" in first_comment
+
+
+def test_get_all_comments_for_video_ids(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(150)
+
+    videos = yt_client.get_all_video_details_for_channel(TEST_CHANNEL_ID)
+    video_ids = [v["videoId"] for v in videos[:2]]  # Limit to 2 videos for test
+
+    all_comments = yt_client.get_all_comments_for_video_ids(video_ids, key_format="upper", output_format="raw")
+
+    assert isinstance(all_comments, list)
+    if all_comments:
+        comment = all_comments[0]
+        assert isinstance(comment, dict)
+        assert "COMMENT_ID" in comment
+        assert "VIDEO_ID" in comment
+        assert "PARENT_ID" in comment
+
 
 
