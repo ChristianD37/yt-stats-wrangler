@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.3.1] - 2026-04-29
+
+### Fixed
+- Restored missing `__init__.py` files in `yt_stats_wrangler/api/` and `yt_stats_wrangler/utils/`. Without them, `find_packages()` excluded both subpackages from the installed distribution, causing `ModuleNotFoundError: No module named 'yt_stats_wrangler.api'` on a fresh install.
+- Added `tests/test_package_structure.py` to catch this class of packaging regression in CI.
+
+---
+
 ## [0.3.0] - 2026-04-29
 
 ### Added
