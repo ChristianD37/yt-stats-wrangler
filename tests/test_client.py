@@ -113,6 +113,42 @@ def test_get_video_comments(yt_client):
         assert "videoTopLevelComments_commit_time" in comments[0]
 
 
+def test_key_rotation():
+    """Key rotation should transparently switch to the next key when quota is hit."""
+    import os
+    api_key = os.getenv("YOUTUBE_API_V3_KEY")
+    if not api_key:
+        pytest.skip("YOUTUBE_API_V3_KEY not set")
+
+    # Pass two copies of the same key — rotation logic doesn't care if they're identical
+    client = YouTubeDataClient(api_key=[api_key, api_key], max_quota=1)
+
+    # Exhaust key 0
+    client._quota_per_key[0] = 1
+    assert client._key_index == 0
+
+    # check_quota should rotate to key 1 and return True
+    assert client.check_quota() is True
+    assert client._key_index == 1
+
+    # Exhaust key 1 as well — now all keys are at limit
+    client._quota_per_key[1] = 1
+    assert client.check_quota() is False
+
+    # reset_quota_used should restore both keys and revert to key 0
+    client.reset_quota_used()
+    assert client._quota_per_key == [0, 0]
+    assert client._key_index == 0
+
+
+def test_get_all_quota_used(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+    all_used = yt_client.get_all_quota_used()
+    assert isinstance(all_used, list)
+    assert all(q == 0 for q in all_used)
+
+
 def test_quota_check_with_unlimited(yt_client):
     yt_client.reset_quota_used()
     yt_client.set_max_quota(-1)
@@ -281,10 +317,8 @@ def test_get_channel_id_from_handle(yt_client):
     assert channel_id.startswith("UC")
 
 
+@pytest.mark.skip(reason="Deprecated: search.list is an unreliable handle resolver. Use test_get_channel_ids_from_handles_v2 instead.")
 def test_get_channel_ids_from_handles(yt_client):
-    if yt_client.max_quota != -1 and yt_client.get_remaining_quota() < 200:
-        pytest.skip("Not enough quota to test multiple handles")
-
     handles = ["@cdcodes", "@homedawg_yt"]
     channel_ids = yt_client.get_channel_ids_from_handles(handles)
 

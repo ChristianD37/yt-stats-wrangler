@@ -16,11 +16,41 @@ def _is_retryable_error(exc: Exception) -> bool:
 
 
 class YouTubeDataClient:
-    def __init__(self, api_key: str, max_quota : int = -1):
-        self.api_key = api_key
-        self.youtube = build("youtube", 'v3',developerKey =api_key)
-        self.quota_used = 0 # track quota usage across calls
-        self.max_quota = max_quota # -1 defaults to no API call limit
+    def __init__(self, api_key: Union[str, List[str]], max_quota: int = -1):
+        if isinstance(api_key, str):
+            self._api_keys = [api_key]
+        else:
+            self._api_keys = list(api_key)
+        self._key_index = 0
+        self._quota_per_key = [0] * len(self._api_keys)
+        self.max_quota = max_quota  # -1 defaults to no API call limit
+        self.youtube = build("youtube", "v3", developerKey=self._api_keys[0])
+
+    @property
+    def api_key(self) -> str:
+        """The currently active API key."""
+        return self._api_keys[self._key_index]
+
+    @property
+    def quota_used(self) -> int:
+        """Quota used by the currently active API key."""
+        return self._quota_per_key[self._key_index]
+
+    @quota_used.setter
+    def quota_used(self, value: int):
+        self._quota_per_key[self._key_index] = value
+
+    def _rotate_key(self) -> bool:
+        """Switch to the next API key that still has remaining quota.
+        Returns True if a usable key was found, False if all keys are exhausted."""
+        for i in range(1, len(self._api_keys)):
+            next_index = (self._key_index + i) % len(self._api_keys)
+            if self.max_quota == -1 or self._quota_per_key[next_index] < self.max_quota:
+                self._key_index = next_index
+                self.youtube = build("youtube", "v3", developerKey=self._api_keys[next_index])
+                print(f"API key rotated ({self._key_index + 1} of {len(self._api_keys)}).")
+                return True
+        return False
 
     def _execute(self, request) -> dict:
         """Execute an API request with exponential backoff retry on transient 5xx errors."""
@@ -35,15 +65,17 @@ class YouTubeDataClient:
         return _run()
 
     def check_quota(self, units: int = 1) -> bool:
-        """Check if calling the next API would exceed the quota."""
-        # Negative one assumes the user wants no limit
+        """Check if calling the next API would exceed the quota. If it would,
+        and multiple keys are configured, attempt to rotate to the next key."""
         if self.max_quota == -1:
             return True
-        # Otherwise, check if the quota is exceeded
-        if self.quota_used + units > self.max_quota:
-            print(f"Quota limit reached: {self.quota_used + units} would exceed max of {self.max_quota}.")
-            return False
-        return True
+        if self.quota_used + units <= self.max_quota:
+            return True
+        # Try rotating to a key with remaining quota
+        if len(self._api_keys) > 1 and self._rotate_key():
+            return True
+        print(f"Quota limit reached on all keys ({self.quota_used + units} would exceed max of {self.max_quota}).")
+        return False
 
     def get_channel_id_from_handle(self, handle: str) -> Optional[str]:
         """
@@ -539,18 +571,25 @@ class YouTubeDataClient:
 
         return convert_to_library(all_comments, output_format)
 
-    def get_quota_used(self):
-        # get the current max quota
+    def get_quota_used(self) -> int:
+        """Return quota used by the currently active API key."""
         return self.quota_used
+
+    def get_all_quota_used(self) -> List[int]:
+        """Return quota used by each API key as a list (index matches key order)."""
+        return list(self._quota_per_key)
 
     def set_max_quota(self, limit: int):
         # Set the max quota that the client can hit in the session
         self.max_quota = limit
         print(f"Max quota set to {limit}.")
 
-    def get_remaining_quota(self):
+    def get_remaining_quota(self) -> int:
+        """Return remaining quota for the currently active API key."""
         return self.max_quota - self.quota_used
 
     def reset_quota_used(self):
-        # Reset the quota
-        self.quota_used = 0
+        """Reset quota counters for all API keys."""
+        self._quota_per_key = [0] * len(self._api_keys)
+        self._key_index = 0
+        self.youtube = build("youtube", "v3", developerKey=self._api_keys[0])
