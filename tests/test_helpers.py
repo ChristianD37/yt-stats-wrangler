@@ -4,6 +4,8 @@ def test_current_commit_time():
     result = current_commit_time("videoTest")
     assert isinstance(result, dict)
     assert "videoTest_commit_time" in result
+    # Timestamp must be UTC-aware (isoformat includes +00:00 offset)
+    assert "+00:00" in result["videoTest_commit_time"]
 
 def test_format_column_friendly_string_cases():
     # Default is now 'upper'
