@@ -113,6 +113,42 @@ def test_get_video_comments(yt_client):
         assert "videoTopLevelComments_commit_time" in comments[0]
 
 
+def test_key_rotation():
+    """Key rotation should transparently switch to the next key when quota is hit."""
+    import os
+    api_key = os.getenv("YOUTUBE_API_V3_KEY")
+    if not api_key:
+        pytest.skip("YOUTUBE_API_V3_KEY not set")
+
+    # Pass two copies of the same key — rotation logic doesn't care if they're identical
+    client = YouTubeDataClient(api_key=[api_key, api_key], max_quota=1)
+
+    # Exhaust key 0
+    client._quota_per_key[0] = 1
+    assert client._key_index == 0
+
+    # check_quota should rotate to key 1 and return True
+    assert client.check_quota() is True
+    assert client._key_index == 1
+
+    # Exhaust key 1 as well — now all keys are at limit
+    client._quota_per_key[1] = 1
+    assert client.check_quota() is False
+
+    # reset_quota_used should restore both keys and revert to key 0
+    client.reset_quota_used()
+    assert client._quota_per_key == [0, 0]
+    assert client._key_index == 0
+
+
+def test_get_all_quota_used(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+    all_used = yt_client.get_all_quota_used()
+    assert isinstance(all_used, list)
+    assert all(q == 0 for q in all_used)
+
+
 def test_quota_check_with_unlimited(yt_client):
     yt_client.reset_quota_used()
     yt_client.set_max_quota(-1)
@@ -281,10 +317,8 @@ def test_get_channel_id_from_handle(yt_client):
     assert channel_id.startswith("UC")
 
 
+@pytest.mark.skip(reason="Deprecated: search.list is an unreliable handle resolver. Use test_get_channel_ids_from_handles_v2 instead.")
 def test_get_channel_ids_from_handles(yt_client):
-    if yt_client.max_quota != -1 and yt_client.get_remaining_quota() < 200:
-        pytest.skip("Not enough quota to test multiple handles")
-
     handles = ["@cdcodes", "@homedawg_yt"]
     channel_ids = yt_client.get_channel_ids_from_handles(handles)
 
@@ -359,6 +393,82 @@ def test_get_all_comments_for_video_ids(yt_client):
         assert "COMMENT_ID" in comment
         assert "VIDEO_ID" in comment
         assert "PARENT_ID" in comment
+
+
+# --- v0.3.0 patch tests ---
+
+def test_get_channel_id_from_handle_v2(yt_client):
+    """forHandle endpoint costs 1 quota unit (vs 100 for search)."""
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+
+    handle = "@cdcodes"
+    channel_id = yt_client.get_channel_id_from_handle_v2(handle)
+
+    assert isinstance(channel_id, str)
+    assert channel_id.startswith("UC")
+    # Should have consumed exactly 1 unit
+    assert yt_client.quota_used == 1
+
+
+def test_get_channel_ids_from_handles_v2(yt_client):
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+
+    handles = ["@cdcodes", "@homedawg_yt"]
+    channel_ids = yt_client.get_channel_ids_from_handles_v2(handles)
+
+    assert isinstance(channel_ids, list)
+    assert len(channel_ids) == len(handles)
+    for cid in channel_ids:
+        assert isinstance(cid, str)
+        assert cid.startswith("UC")
+    # 1 unit per handle
+    assert yt_client.quota_used == len(handles)
+
+
+def test_get_channel_statistics_for_channels_batched(yt_client):
+    """Batched version should use 1 quota unit for up to 50 channels."""
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+
+    result = yt_client.get_channel_statistics_for_channels(TEST_CHANNELS, key_format="upper", output_format="raw")
+
+    assert isinstance(result, list)
+    assert len(result) == len(TEST_CHANNELS)
+    for channel in result:
+        assert "CHANNEL_ID" in channel
+        assert "SUBSCRIBERS" in channel
+    # Two channels fit in one batch call → 1 quota unit
+    assert yt_client.quota_used == 1
+
+
+def test_get_all_video_details_published_after(yt_client):
+    """published_after should return fewer videos than an unconstrained call."""
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+
+    all_videos = yt_client.get_all_video_details_for_channel(TEST_CHANNEL_ID)
+    # Use the publish date of the 2nd-oldest returned video as the cutoff
+    if len(all_videos) < 2:
+        pytest.skip("Not enough videos on channel to test published_after filtering")
+
+    cutoff = all_videos[-2]["publishedAt"]
+    filtered = yt_client.get_all_video_details_for_channel(TEST_CHANNEL_ID, published_after=cutoff)
+
+    assert isinstance(filtered, list)
+    assert len(filtered) < len(all_videos)
+
+
+def test_commit_time_is_utc(yt_client):
+    """Commit timestamps on returned records should be UTC-aware ISO strings."""
+    yt_client.reset_quota_used()
+    yt_client.set_max_quota(-1)
+
+    result = yt_client.get_channel_statistics(TEST_CHANNEL_ID)
+    assert len(result) == 1
+    commit_time = result[0]["channelStats_commit_time"]
+    assert "+00:00" in commit_time
 
 
 

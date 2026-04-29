@@ -4,46 +4,98 @@ from googleapiclient.errors import HttpError
 import isodate
 import datetime
 from typing import List, Dict, Optional, Union
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 # Import helper functions within the package
 from yt_stats_wrangler.utils.helpers import current_commit_time, format_dict_keys, convert_to_library
 
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """Return True for transient 5xx HTTP errors that warrant a retry."""
+    return isinstance(exc, HttpError) and exc.resp.status in (500, 503)
+
+
 class YouTubeDataClient:
-    def __init__(self, api_key: str, max_quota : int = -1):
-        self.api_key = api_key
-        self.youtube = build("youtube", 'v3',developerKey =api_key)
-        self.quota_used = 0 # track quota usage across calls
-        self.max_quota = max_quota # -1 defaults to no API call limit
+    def __init__(self, api_key: Union[str, List[str]], max_quota: int = -1):
+        if isinstance(api_key, str):
+            self._api_keys = [api_key]
+        else:
+            self._api_keys = list(api_key)
+        self._key_index = 0
+        self._quota_per_key = [0] * len(self._api_keys)
+        self.max_quota = max_quota  # -1 defaults to no API call limit
+        self.youtube = build("youtube", "v3", developerKey=self._api_keys[0])
+
+    @property
+    def api_key(self) -> str:
+        """The currently active API key."""
+        return self._api_keys[self._key_index]
+
+    @property
+    def quota_used(self) -> int:
+        """Quota used by the currently active API key."""
+        return self._quota_per_key[self._key_index]
+
+    @quota_used.setter
+    def quota_used(self, value: int):
+        self._quota_per_key[self._key_index] = value
+
+    def _rotate_key(self) -> bool:
+        """Switch to the next API key that still has remaining quota.
+        Returns True if a usable key was found, False if all keys are exhausted."""
+        for i in range(1, len(self._api_keys)):
+            next_index = (self._key_index + i) % len(self._api_keys)
+            if self.max_quota == -1 or self._quota_per_key[next_index] < self.max_quota:
+                self._key_index = next_index
+                self.youtube = build("youtube", "v3", developerKey=self._api_keys[next_index])
+                print(f"API key rotated ({self._key_index + 1} of {len(self._api_keys)}).")
+                return True
+        return False
+
+    def _execute(self, request) -> dict:
+        """Execute an API request with exponential backoff retry on transient 5xx errors."""
+        @retry(
+            retry=retry_if_exception(_is_retryable_error),
+            wait=wait_exponential(multiplier=1, min=2, max=60),
+            stop=stop_after_attempt(3),
+            reraise=True
+        )
+        def _run():
+            return request.execute()
+        return _run()
 
     def check_quota(self, units: int = 1) -> bool:
-        """Check if calling the next API would exceed the quota."""
-        # Negative one assumes the user wants no limit
+        """Check if calling the next API would exceed the quota. If it would,
+        and multiple keys are configured, attempt to rotate to the next key."""
         if self.max_quota == -1:
             return True
-        # Otherwise, check if the quota is exceeded
-        if self.quota_used + units > self.max_quota:
-            print(f"Quota limit reached: {self.quota_used + units} would exceed max of {self.max_quota}.")
-            return False
-        return True
-    
+        if self.quota_used + units <= self.max_quota:
+            return True
+        # Try rotating to a key with remaining quota
+        if len(self._api_keys) > 1 and self._rotate_key():
+            return True
+        print(f"Quota limit reached on all keys ({self.quota_used + units} would exceed max of {self.max_quota}).")
+        return False
+
     def get_channel_id_from_handle(self, handle: str) -> Optional[str]:
         """
         Retrieve the channel ID associated with a given YouTube handle (e.g., '@cdcodes').
 
         Note: This method uses the search endpoint, which consumes **100 quota units** per call.
+        Prefer get_channel_id_from_handle_v2 which costs only 1 unit.
         """
         if not self.check_quota(units=100):
             print("Quota exhausted. Cannot perform search.")
             return None
 
         try:
-            response = self.youtube.search().list(
+            request = self.youtube.search().list(
                 part="snippet",
                 q=handle,
                 type="channel",
                 maxResults=1
-            ).execute()
-
+            )
+            response = self._execute(request)
             self.quota_used += 100
 
             if response.get("items"):
@@ -53,9 +105,28 @@ class YouTubeDataClient:
             print(f"Error retrieving channel ID for handle {handle}: {e}")
 
         return None
-    
+
+    def get_channel_id_from_handle_v2(self, handle: str) -> Optional[str]:
+        """
+        Retrieve the channel ID for a YouTube handle using channels.list(forHandle=...).
+        Costs 1 quota unit vs 100 for the search-based get_channel_id_from_handle.
+        """
+        if not self.check_quota():
+            print("Quota exhausted. Cannot resolve handle.")
+            return None
+        try:
+            request = self.youtube.channels().list(part="id", forHandle=handle)
+            response = self._execute(request)
+            self.quota_used += 1
+            if response.get("items"):
+                return response["items"][0]["id"]
+        except Exception as e:
+            print(f"Error retrieving channel ID for handle {handle}: {e}")
+        return None
+
     def get_channel_ids_from_handles(self, handles: List[str], print_current_handle = True) -> List[str]:
-        """Takes a list of YouTube handles and returns the corresponding list of channel IDs."""
+        """Takes a list of YouTube handles and returns the corresponding list of channel IDs.
+        Uses the search endpoint (100 units/handle). Prefer get_channel_ids_from_handles_v2."""
         channel_ids = []
         self.failed_handles = []
 
@@ -77,14 +148,39 @@ class YouTubeDataClient:
                 self.failed_handles.append(handle)
 
         return channel_ids
-    
+
+    def get_channel_ids_from_handles_v2(self, handles: List[str], print_current_handle: bool = True) -> List[str]:
+        """Takes a list of YouTube handles and returns the corresponding list of channel IDs.
+        Uses channels.list(forHandle=...) at 1 unit/handle — 100x cheaper than get_channel_ids_from_handles."""
+        channel_ids = []
+        self.failed_handles = []
+
+        for handle in handles:
+            if not self.check_quota():
+                print("Quota limit reached. Stopping handle conversion.")
+                break
+
+            if print_current_handle: print(f"Resolving handle: {handle}")
+            try:
+                channel_id = self.get_channel_id_from_handle_v2(handle)
+                if channel_id:
+                    channel_ids.append(channel_id)
+                else:
+                    self.failed_handles.append(handle)
+            except Exception as e:
+                print(f"Error resolving handle {handle}: {e}")
+                self.failed_handles.append(handle)
+
+        return channel_ids
+
     def get_channel_statistics(self, channel_id: str, key_format: str = "raw", output_format: str = "raw") -> Union[List[Dict], any]:
         """Fetch high-level statistics for a single channel, such as subscribers, total views, and total posts.
         Input is a YouTube channel ID."""
         if not self.check_quota():
             return []
         result = []
-        response = self.youtube.channels().list(part="statistics,snippet", id=channel_id).execute()
+        request = self.youtube.channels().list(part="statistics,snippet", id=channel_id)
+        response = self._execute(request)
         self.quota_used += 1
 
         if response["items"]:
@@ -103,23 +199,36 @@ class YouTubeDataClient:
             return convert_to_library(result, output_format=output_format)
 
         return [] if output_format == "raw" else convert_to_library([], output_format=output_format)
-    
+
     def get_channel_statistics_for_channels(self, channel_ids: List[str], key_format: str = "raw", output_format: str = "raw") -> Union[List[Dict], any]:
-        """Fetch statistics for multiple channels at once. Input is a list of YouTube Channel IDs. 
-        Iterable version of get_channel_statistics_for_channel."""
+        """Fetch statistics for multiple channels. Batches up to 50 IDs per API call (1 unit per 50 channels).
+        Iterable version of get_channel_statistics."""
         results = []
 
-        for channel_id in channel_ids:
+        for i in range(0, len(channel_ids), 50):
+            chunk = channel_ids[i:i + 50]
             if not self.check_quota():
                 print("Quota exhausted.")
                 break
             try:
-                single = self.get_channel_statistics(channel_id, key_format=key_format, output_format="raw")
-                results.extend(single)
+                request = self.youtube.channels().list(part="statistics,snippet", id=",".join(chunk))
+                response = self._execute(request)
+                self.quota_used += 1
+                for item in response.get("items", []):
+                    channel_data = {
+                        "channelId": item["id"],
+                        "channelName": item["snippet"]["title"],
+                        "subscribers": int(item["statistics"].get("subscriberCount", 0)),
+                        "totalChannelViews": int(item["statistics"].get("viewCount", 0)),
+                        "totalPosts": int(item["statistics"].get("videoCount", 0)),
+                    }
+                    channel_data.update(current_commit_time("channelStats"))
+                    results.append(channel_data)
             except Exception as e:
-                print(f"Error retrieving stats for {channel_id}: {e}")
-                continue
+                print(f"Error retrieving stats for channel chunk: {e}")
 
+        if key_format != "raw":
+            results = format_dict_keys(results, case=key_format)
         return convert_to_library(results, output_format=output_format)
 
     def get_uploads_playlist_id(self, channel_id: str) -> Optional[str]:
@@ -130,65 +239,85 @@ class YouTubeDataClient:
         # Ensure quota hasn't been hit
         if not self.check_quota():
             return None
-        response = self.youtube.channels().list(
+        request = self.youtube.channels().list(
             part="contentDetails",
             id=channel_id
-        ).execute()
+        )
+        response = self._execute(request)
         self.quota_used += 1
         return response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
 
-    def get_all_video_details_for_channel(self, channel_id: str, key_format : str = 'raw', output_format: str = "raw"):
+    def get_all_video_details_for_channel(self, channel_id: str, key_format: str = 'raw',
+                                          output_format: str = "raw",
+                                          published_after: Optional[str] = None):
         """Function that takes in a channel ID, identifies the channels
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
-        to make the dictionary keys more readable."""
+        to make the dictionary keys more readable.
+
+        Args:
+            published_after: ISO 8601 timestamp (e.g. '2024-01-01T00:00:00Z'). When provided,
+                pagination stops as soon as a video older than this date is encountered,
+                avoiding a full scan for incremental collection runs.
+        """
         video_details = []
         playlist_id = self.get_uploads_playlist_id(channel_id)
         next_page_token = None
+        stop_early = False
 
         while True:
             # Ensure quota hasn't been hit, break if it has and return what was collected
             if not self.check_quota():
                 break
-            response = self.youtube.playlistItems().list(
+            request = self.youtube.playlistItems().list(
                 part="snippet",
                 playlistId=playlist_id,
                 maxResults=50,
                 pageToken=next_page_token
-            ).execute()
+            )
+            response = self._execute(request)
             self.quota_used += 1
             for item in response['items']:
                 snippet = item['snippet']
+                published_at = snippet["publishedAt"]
+                # Videos are returned newest-first; stop once we pass the cutoff
+                if published_after and published_at <= published_after:
+                    stop_early = True
+                    break
                 video = {
                     "channelId": channel_id,
                     "videoId": snippet["resourceId"]["videoId"],
-                    "publishedAt": snippet["publishedAt"],
+                    "publishedAt": published_at,
                     "title": snippet["title"],
                     "description": snippet["description"],
                     "channelTitle": snippet["channelTitle"],
-                    
                 }
                 video.update(current_commit_time('videoDetails'))
                 video_details.append(video)
-                
 
             next_page_token = response.get("nextPageToken")
-            if not next_page_token:
+            if not next_page_token or stop_early:
                 break
         # Fix the key names if asked to
         if key_format != "raw":
             video_details = format_dict_keys(video_details, case=key_format)
 
         return convert_to_library(video_details, output_format)
-    
-    def get_all_video_details_for_channels(self, channel_ids: List[str], key_format: str = "raw", 
-                                           output_format: str = "raw", print_current_channel = True) -> Union[List[Dict], any]:
+
+    def get_all_video_details_for_channels(self, channel_ids: List[str], key_format: str = "raw",
+                                           output_format: str = "raw", print_current_channel: bool = True,
+                                           published_after: Optional[str] = None) -> Union[List[Dict], any]:
         """Function that takes in a list of channel IDs, identifies the channels'
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
-        to make the dictionary keys more readable."""
+        to make the dictionary keys more readable.
+
+        Args:
+            published_after: ISO 8601 timestamp passed through to get_all_video_details_for_channel
+                to short-circuit pagination for incremental runs.
+        """
         all_videos = []
-        self.failed_channel_ids =[]
+        self.failed_channel_ids = []
         for channel_id in channel_ids:
             if not self.check_quota():
                 print("Quota limit reached. Stopping collection.")
@@ -196,7 +325,9 @@ class YouTubeDataClient:
 
             if print_current_channel: print(f"Fetching videos for channel: {channel_id}")
             try:
-                videos = self.get_all_video_details_for_channel(channel_id, key_format=key_format)
+                videos = self.get_all_video_details_for_channel(
+                    channel_id, key_format=key_format, published_after=published_after
+                )
                 all_videos.extend(videos)
             except Exception as e:
                 print(f"Error fetching videos for channel {channel_id}: {e}")
@@ -206,7 +337,7 @@ class YouTubeDataClient:
 
 
     def get_video_stats(self, video_ids: List[str], key_format: str = 'raw', output_format: str = "raw") -> Union[List[Dict], any]:
-        """Input a list of video IDs, and get a descriptiveb statistics and metrics on the performance of the video.
+        """Input a list of video IDs, and get descriptive statistics and metrics on the performance of the video.
         Returns views, engagement, metrics, duration, shorts classification and other metadata on the video."""
         all_video_data = []
         for i in range(0, len(video_ids), 50):
@@ -215,10 +346,11 @@ class YouTubeDataClient:
                 break
 
             chunk = video_ids[i:i + 50]
-            response = self.youtube.videos().list(
+            request = self.youtube.videos().list(
                 part="snippet,statistics,contentDetails",
                 id=",".join(chunk)
-            ).execute()
+            )
+            response = self._execute(request)
             self.quota_used += 1
 
             for item in response.get("items", []):
@@ -247,7 +379,7 @@ class YouTubeDataClient:
             all_video_data = format_dict_keys(all_video_data, case=key_format)
 
         return convert_to_library(all_video_data, output_format)
-    
+
     def get_top_level_video_comments(self, video_id: str, key_format: str = 'raw', output_format: str = "raw") -> Union[List[Dict], any]:
         """Retrieve all top-level comments for a given video ID. Will not return nested comments."""
         comments = []
@@ -263,7 +395,7 @@ class YouTubeDataClient:
             if not self.check_quota():
                 break
 
-            response = request.execute()
+            response = self._execute(request)
             self.quota_used += 1
             for item in response.get('items', []):
                 # Extract data on top level comments
@@ -288,7 +420,7 @@ class YouTubeDataClient:
             comments = format_dict_keys(comments, case=key_format)
 
         return convert_to_library(comments, output_format)
-    
+
     def get_top_level_comments_for_video_ids(self, video_ids: List[str], key_format : str = 'raw',
                                               output_format: str = "raw", print_current_channel = True) -> Union[List[Dict], any]:
         all_comments = []
@@ -317,7 +449,7 @@ class YouTubeDataClient:
             all_comments = format_dict_keys(all_comments, case=key_format)
 
         return convert_to_library(all_comments, output_format) # or return all_comments, failed_ids
-    
+
     def get_replies_to_comment(self, parent_comment_id: str) -> List[Dict]:
         """Fetch all replies to a top-level comment using its comment ID. This is a helper function that is used
         in the get_all_video_comments method to gather comment replies and handle nested comments."""
@@ -334,7 +466,7 @@ class YouTubeDataClient:
             if not self.check_quota():
                 break
 
-            response = request.execute()
+            response = self._execute(request)
             self.quota_used += 1
 
             for item in response.get("items", []):
@@ -354,8 +486,8 @@ class YouTubeDataClient:
             request = self.youtube.comments().list_next(request, response)
 
         return replies
-    
-    def get_all_video_comments(self, video_id: str, key_format: str = 'raw', 
+
+    def get_all_video_comments(self, video_id: str, key_format: str = 'raw',
                                        output_format: str = "raw") -> Union[List[Dict], any]:
         """Fetch all comments (top-level and nested) for a video. Takes in a singular Video ID and returns
         all comments left on that video, including replies to other comments."""
@@ -372,7 +504,7 @@ class YouTubeDataClient:
             if not self.check_quota():
                 break
 
-            response = request.execute()
+            response = self._execute(request)
             self.quota_used += 1
 
             for item in response.get("items", []):
@@ -394,7 +526,7 @@ class YouTubeDataClient:
                 comment.update(current_commit_time("videoAllComments"))
                 all_comments.append(comment)
 
-                # For eacxh comment, get any replies if they exist and append the data onto the comment output
+                # For each comment, get any replies if they exist and append the data onto the comment output
                 if reply_count > 0:
                     replies = self.get_replies_to_comment(top_id)
                     all_comments.extend(replies)
@@ -405,7 +537,7 @@ class YouTubeDataClient:
             all_comments = format_dict_keys(all_comments, case=key_format)
         # Format output according to specified library structure, and return the output
         return convert_to_library(all_comments, output_format)
-    
+
     def get_all_comments_for_video_ids(self, video_ids: List[str], key_format: str = 'raw',
                                     output_format: str = "raw", print_current_video: bool = True) -> Union[List[Dict], any]:
         """Fetches all comments (top-level and nested) for multiple videos IDs. Input is a list of video IDs. Output is all comments
@@ -438,19 +570,26 @@ class YouTubeDataClient:
             all_comments = format_dict_keys(all_comments, case=key_format)
 
         return convert_to_library(all_comments, output_format)
-    
-    def get_quota_used(self):
-        # get the current max quota
+
+    def get_quota_used(self) -> int:
+        """Return quota used by the currently active API key."""
         return self.quota_used
-    
+
+    def get_all_quota_used(self) -> List[int]:
+        """Return quota used by each API key as a list (index matches key order)."""
+        return list(self._quota_per_key)
+
     def set_max_quota(self, limit: int):
-        # Set the max quota thjat the client can hit in the session
+        # Set the max quota that the client can hit in the session
         self.max_quota = limit
         print(f"Max quota set to {limit}.")
 
-    def get_remaining_quota(self):
+    def get_remaining_quota(self) -> int:
+        """Return remaining quota for the currently active API key."""
         return self.max_quota - self.quota_used
 
     def reset_quota_used(self):
-        # Reset the quota
-        self.quota_used = 0
+        """Reset quota counters for all API keys."""
+        self._quota_per_key = [0] * len(self._api_keys)
+        self._key_index = 0
+        self.youtube = build("youtube", "v3", developerKey=self._api_keys[0])

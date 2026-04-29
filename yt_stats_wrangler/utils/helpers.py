@@ -1,11 +1,11 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 
 
-def current_commit_time(prefix: str) -> str:
+def current_commit_time(prefix: str) -> dict:
     """Used to create a customized commit time for each API call"""
-    return {f"{prefix}_commit_time": str(datetime.now())}
+    return {f"{prefix}_commit_time": datetime.now(timezone.utc).isoformat()}
 
 def format_column_friendly_string(name: str, case: str = 'upper') -> str:
     """Helper function to format column names in a more column-friendly format for the user. Adds underscores between
