@@ -72,6 +72,24 @@ Checkout [`example_notebooks`](https://github.com/ChristianD37/yt-stats-wrangler
 
 ---
 
+## Quota Exhaustion Behavior
+
+When a configured key returns `403 quotaExceeded`, the wrangler:
+
+1. Marks that key as fully spent in its in-memory counter.
+2. Attempts to rotate to a sibling key (if multiple were provided to `__init__`).
+3. Raises `QuotaExceededError` from the failing call.
+
+`QuotaExceededError` exposes `keys_remaining: bool` so iterating methods can decide whether to keep going on the new key or abort. Callers using single-call methods (`get_channel_id_from_handle_v2`, `get_channel_statistics`, etc.) should catch `QuotaExceededError` directly.
+
+Importable from `yt_stats_wrangler.api.client`:
+
+```python
+from yt_stats_wrangler.api.client import QuotaExceededError
+```
+
+---
+
 ## Supported Methods
 
 ### YouTubeDataClient
