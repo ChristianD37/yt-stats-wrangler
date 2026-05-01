@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.0] - 2026-05-01
+
+### Added
+- `QuotaExceededError` exception raised when YouTube returns 403 with reason `quotaExceeded`, `dailyLimitExceeded`, or `rateLimitExceeded`. Exposes `keys_remaining: bool` so callers can decide whether to continue iterating.
+- `_quota_exceeded()` helper for parsing the 403 error body reason field.
+- README section documenting quota exhaustion behavior and `QuotaExceededError` usage.
+
+### Fixed
+- Quota-exhausted API keys now correctly trigger automatic rotation to the next configured key. Previously, 403 quotaExceeded errors were caught generically and the in-memory `quota_used` counter never incremented, so `check_quota()` kept reporting healthy state and rotation never fired. This caused multi-key clients to silently grind to a halt on a single spent key while a fresh sibling sat unused.
+- Batch methods (`get_all_video_details_for_channels`, `get_channel_statistics_for_channels`, `get_top_level_comments_for_video_ids`, `get_all_comments_for_video_ids`, `get_channel_ids_from_handles`, `get_channel_ids_from_handles_v2`) now break their loops cleanly when all configured keys are exhausted, instead of pointlessly iterating through every remaining item.
+
+---
+
 ## [0.3.1] - 2026-04-29
 
 ### Fixed
