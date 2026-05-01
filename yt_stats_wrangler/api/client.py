@@ -3,6 +3,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import isodate
 import datetime
+import json
 from typing import List, Dict, Optional, Union
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
@@ -10,9 +11,39 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from yt_stats_wrangler.utils.helpers import current_commit_time, format_dict_keys, convert_to_library
 
 
+class QuotaExceededError(Exception):
+    """Raised when a YouTube API call returns 403 quotaExceeded.
+
+    Attributes:
+        keys_remaining (bool): True if a sibling key is still viable
+            after rotation. False means all configured keys are spent
+            and any active loop in the caller should abort.
+    """
+    def __init__(self, message: str, keys_remaining: bool = False):
+        super().__init__(message)
+        self.keys_remaining = keys_remaining
+
+
+_QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
+
+
 def _is_retryable_error(exc: Exception) -> bool:
     """Return True for transient 5xx HTTP errors that warrant a retry."""
     return isinstance(exc, HttpError) and exc.resp.status in (500, 503)
+
+
+def _quota_exceeded(exc: Exception) -> bool:
+    """True if exc is a YouTube 403 caused by quota / rate-limit exhaustion."""
+    if not isinstance(exc, HttpError):
+        return False
+    if exc.resp.status != 403:
+        return False
+    try:
+        body = json.loads(exc.content.decode())
+        reasons = {e.get("reason") for e in body.get("error", {}).get("errors", [])}
+        return bool(reasons & _QUOTA_REASONS)
+    except Exception:
+        return False
 
 
 class YouTubeDataClient:
@@ -53,16 +84,36 @@ class YouTubeDataClient:
         return False
 
     def _execute(self, request) -> dict:
-        """Execute an API request with exponential backoff retry on transient 5xx errors."""
+        """Execute an API request with:
+          - exponential backoff retry on transient 5xx errors
+          - explicit detection + rotation on 403 quotaExceeded
+        """
         @retry(
             retry=retry_if_exception(_is_retryable_error),
             wait=wait_exponential(multiplier=1, min=2, max=60),
             stop=stop_after_attempt(3),
-            reraise=True
+            reraise=True,
         )
         def _run():
             return request.execute()
-        return _run()
+
+        try:
+            return _run()
+        except HttpError as exc:
+            if not _quota_exceeded(exc):
+                raise
+
+            # Server says this key is spent — sync our in-memory counter.
+            if self.max_quota != -1:
+                self._quota_per_key[self._key_index] = self.max_quota
+
+            # Try rotating to a sibling key with budget remaining.
+            rotated = len(self._api_keys) > 1 and self._rotate_key()
+            msg = (
+                f"Key {self._key_index + 1} hit 403 quotaExceeded; "
+                f"{'rotated to next key' if rotated else 'all keys exhausted'}."
+            )
+            raise QuotaExceededError(msg, keys_remaining=rotated) from exc
 
     def check_quota(self, units: int = 1) -> bool:
         """Check if calling the next API would exceed the quota. If it would,
@@ -143,6 +194,12 @@ class YouTubeDataClient:
                 else:
                     self.failed_handles.append(handle)
 
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
+
             except Exception as e:
                 print(f"Error resolving handle {handle}: {e}")
                 self.failed_handles.append(handle)
@@ -167,6 +224,13 @@ class YouTubeDataClient:
                     channel_ids.append(channel_id)
                 else:
                     self.failed_handles.append(handle)
+
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
+
             except Exception as e:
                 print(f"Error resolving handle {handle}: {e}")
                 self.failed_handles.append(handle)
@@ -224,6 +288,13 @@ class YouTubeDataClient:
                     }
                     channel_data.update(current_commit_time("channelStats"))
                     results.append(channel_data)
+
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
+
             except Exception as e:
                 print(f"Error retrieving stats for channel chunk: {e}")
 
@@ -329,6 +400,13 @@ class YouTubeDataClient:
                     channel_id, key_format=key_format, published_after=published_after
                 )
                 all_videos.extend(videos)
+
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
+
             except Exception as e:
                 print(f"Error fetching videos for channel {channel_id}: {e}")
                 self.failed_channel_ids.append(channel_id)
@@ -435,6 +513,12 @@ class YouTubeDataClient:
             try:
                 comments = self.get_top_level_video_comments(video_id)
                 all_comments.extend(comments)
+
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
 
             except HttpError as e:
                 self.quota_used += 1
@@ -556,6 +640,12 @@ class YouTubeDataClient:
             try:
                 comments = self.get_all_video_comments(video_id, key_format="raw", output_format="raw")
                 all_comments.extend(comments)
+
+            except QuotaExceededError as exc:
+                print(f"  {exc}")
+                if not exc.keys_remaining:
+                    break
+                continue
 
             except HttpError as e:
                 self.quota_used += 1
