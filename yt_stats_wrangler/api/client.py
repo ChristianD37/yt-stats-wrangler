@@ -320,7 +320,8 @@ class YouTubeDataClient:
 
     def get_all_video_details_for_channel(self, channel_id: str, key_format: str = 'raw',
                                           output_format: str = "raw",
-                                          published_after: Optional[str] = None):
+                                          published_after: Optional[str] = None,
+                                          get_playlist_id_from_api: bool = False):
         """Function that takes in a channel ID, identifies the channels
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
@@ -330,9 +331,15 @@ class YouTubeDataClient:
             published_after: ISO 8601 timestamp (e.g. '2024-01-01T00:00:00Z'). When provided,
                 pagination stops as soon as a video older than this date is encountered,
                 avoiding a full scan for incremental collection runs.
+            get_playlist_id_from_api: If False (default), the uploads playlist ID is derived
+                directly from the channel ID by swapping the 'UC' prefix for 'UU', saving
+                1 quota unit per channel. Set to True to fetch it via the API instead.
         """
         video_details = []
-        playlist_id = self.get_uploads_playlist_id(channel_id)
+        if get_playlist_id_from_api:
+            playlist_id = self.get_uploads_playlist_id(channel_id)
+        else:
+            playlist_id = "UU" + channel_id[2:]
         next_page_token = None
         stop_early = False
 
@@ -377,7 +384,8 @@ class YouTubeDataClient:
 
     def get_all_video_details_for_channels(self, channel_ids: List[str], key_format: str = "raw",
                                            output_format: str = "raw", print_current_channel: bool = True,
-                                           published_after: Optional[str] = None) -> Union[List[Dict], any]:
+                                           published_after: Optional[str] = None,
+                                           get_playlist_id_from_api: bool = False) -> Union[List[Dict], any]:
         """Function that takes in a list of channel IDs, identifies the channels'
         full playlist of uploads, and then extracts the metadata for all videos
         on the channel. Key format can be specified as 'upper', 'lower', or 'mixed'
@@ -386,6 +394,8 @@ class YouTubeDataClient:
         Args:
             published_after: ISO 8601 timestamp passed through to get_all_video_details_for_channel
                 to short-circuit pagination for incremental runs.
+            get_playlist_id_from_api: Passed through to get_all_video_details_for_channel.
+                Defaults to False (derive playlist ID from channel ID without an API call).
         """
         all_videos = []
         self.failed_channel_ids = []
@@ -397,7 +407,8 @@ class YouTubeDataClient:
             if print_current_channel: print(f"Fetching videos for channel: {channel_id}")
             try:
                 videos = self.get_all_video_details_for_channel(
-                    channel_id, key_format=key_format, published_after=published_after
+                    channel_id, key_format=key_format, published_after=published_after,
+                    get_playlist_id_from_api=get_playlist_id_from_api
                 )
                 all_videos.extend(videos)
 
