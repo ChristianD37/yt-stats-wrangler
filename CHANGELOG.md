@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+## [0.4.2] - 2026-05-12
+
+### Added
+- `topicCategories` field on channel stats output: YouTube-assigned Wikipedia-backed topic URLs (e.g. `https://en.wikipedia.org/wiki/Music`), sourced from `topicDetails` part. No additional quota cost.
+- `brandingKeywords` field on channel stats output: space-separated keyword string set by the channel creator, sourced from `brandingSettings` part. No additional quota cost.
+- Both fields are returned by `get_channel_statistics()` and `get_channel_statistics_for_channels()`.
+
+### Note
+- `categoryId` and `tags` were already captured in `get_video_stats()` — no change needed there.
+
+---
+
 ## [0.4.1] - 2026-05-06
 
 ### Added

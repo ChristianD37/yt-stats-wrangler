@@ -238,12 +238,16 @@ class YouTubeDataClient:
         return channel_ids
 
     def get_channel_statistics(self, channel_id: str, key_format: str = "raw", output_format: str = "raw") -> Union[List[Dict], any]:
-        """Fetch high-level statistics for a single channel, such as subscribers, total views, and total posts.
+        """Fetch high-level statistics for a single channel, including subscribers, total views,
+        total posts, YouTube-assigned topic categories, and creator-defined branding keywords.
         Input is a YouTube channel ID."""
         if not self.check_quota():
             return []
         result = []
-        request = self.youtube.channels().list(part="statistics,snippet", id=channel_id)
+        request = self.youtube.channels().list(
+            part="statistics,snippet,topicDetails,brandingSettings",
+            id=channel_id
+        )
         response = self._execute(request)
         self.quota_used += 1
 
@@ -255,6 +259,8 @@ class YouTubeDataClient:
                 "subscribers": int(item["statistics"].get("subscriberCount", 0)),
                 "totalChannelViews": int(item["statistics"].get("viewCount", 0)),
                 "totalPosts": int(item["statistics"].get("videoCount", 0)),
+                "topicCategories": item.get("topicDetails", {}).get("topicCategories", []),
+                "brandingKeywords": item.get("brandingSettings", {}).get("channel", {}).get("keywords", ""),
             }
             channel_data.update(current_commit_time("channelStats"))
             result.append(channel_data)
@@ -275,7 +281,10 @@ class YouTubeDataClient:
                 print("Quota exhausted.")
                 break
             try:
-                request = self.youtube.channels().list(part="statistics,snippet", id=",".join(chunk))
+                request = self.youtube.channels().list(
+                    part="statistics,snippet,topicDetails,brandingSettings",
+                    id=",".join(chunk)
+                )
                 response = self._execute(request)
                 self.quota_used += 1
                 for item in response.get("items", []):
@@ -285,6 +294,8 @@ class YouTubeDataClient:
                         "subscribers": int(item["statistics"].get("subscriberCount", 0)),
                         "totalChannelViews": int(item["statistics"].get("viewCount", 0)),
                         "totalPosts": int(item["statistics"].get("videoCount", 0)),
+                        "topicCategories": item.get("topicDetails", {}).get("topicCategories", []),
+                        "brandingKeywords": item.get("brandingSettings", {}).get("channel", {}).get("keywords", ""),
                     }
                     channel_data.update(current_commit_time("channelStats"))
                     results.append(channel_data)
